@@ -6,5 +6,5 @@ import (
 )
 
 func TestConnect(t *testing.T) {
-	adbutils.NewAdb("127.0.0.1", 5037, 10)
+	adb_client := adbutils.NewAdb("127.0.0.1", 5037, 10)
 }

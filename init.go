@@ -3,6 +3,7 @@ package adbutils
 import (
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"reflect"
 	"time"
@@ -70,7 +71,7 @@ func (adb adbClient) connect(timeout time.Duration) {
 		switch reflect.TypeOf(err) {
 		case reflect.TypeOf(&net.OpError{}):
 			// TODO
-			cmd := exec.Command("adb_path", "start-server")
+			cmd := exec.Command("adb", "start-server")
 			err = cmd.Start()
 			if err != nil {
 				panic(err.Error())
@@ -88,6 +89,34 @@ func (adb adbClient) connect(timeout time.Duration) {
 	}
 	adbStream.Conn = conn
 
+}
+
+func (adb adbClient) device(serial string, transport_id int) AdbDevice {
+	// TODO
+	if serial != "" {
+		return AdbDevice{Client: adb, Serial: serial}
+	}
+
+	if transport_id > 0 {
+		return AdbDevice{Client: adb, Transport_id}
+	}
+
+	serial = os.Getenv("ANDROID_SERIAL")
+	if serial != "" {
+		ds = adb.device_list()
+		if len(ds) == 0 {
+			fmt.Error("Error: Can't find any android device/emulator")
+		}
+		if len(ds) > 1 {
+			fmt.Error("more than one device/emulator, please specify the serial number")
+		}
+		return ds[0]
+	}
+	return AdbDevice{Client: adb, Serial: serial}
+}
+
+func (adb adbClient) shell(serial string, command string, stream bool, timeout float32) string {
+	return adb.device(serial).shell(command, stream, timeout)
 }
 
 func NewAdb(host string, port int, timeOut time.Duration) *adbClient {
