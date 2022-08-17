@@ -124,22 +124,6 @@ func (adbStream adbStreamConnection) Close() {
 	}
 }
 
-func (adbStream adbStreamConnection) ReadN(size int) (raw []byte, err error) {
-	raw = make([]byte, 0, size)
-	for len(raw) < size {
-		buf := make([]byte, size-len(raw))
-		var n int
-		if n, err = io.ReadFull(adbStream.Conn, buf); err != nil {
-			return nil, err
-		}
-		if n == 0 {
-			return nil, err
-		}
-		raw = append(raw, buf...)
-	}
-	return
-}
-
 func (adbStream adbStreamConnection) Read(n int) []byte {
 	return adbStream.readFully(n)
 }
