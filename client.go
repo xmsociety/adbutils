@@ -144,22 +144,6 @@ func (adbStream adbStreamConnection) Read(n int) []byte {
 	return adbStream.readFully(n)
 }
 
-func _readN(reader io.Reader, size int) (raw []byte, err error) {
-	raw = make([]byte, 0, size)
-	for len(raw) < size {
-		buf := make([]byte, size-len(raw))
-		var n int
-		if n, err = io.ReadFull(reader, buf); err != nil {
-			return nil, err
-		}
-		if n == 0 {
-			return nil, err
-		}
-		raw = append(raw, buf...)
-	}
-	return
-}
-
 func (adbStream adbStreamConnection) readFully(n int) []byte {
 	t := 0
 	buffer := make([]byte, n)
