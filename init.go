@@ -57,8 +57,8 @@ type adbClient struct {
 	SocketTime time.Time
 }
 
-func AdbPath() {
-
+func AdbPath() string {
+	return ""
 }
 func (adb adbClient) connect(timeout time.Duration) {
 	adbStream := adbStreamConnection{
