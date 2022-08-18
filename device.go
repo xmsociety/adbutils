@@ -9,9 +9,10 @@ import (
 )
 
 type ShellMixin struct {
-	Client     *adbClient
-	Serial     string
-	properties map[string]string
+	Client      *adbClient
+	Serial      string
+	TransportID int
+	properties  map[string]string
 }
 
 func (mixin ShellMixin) run(cmd string) interface{} {
@@ -181,12 +182,27 @@ func (device AdbDevice) GetState() string {
 	return device.getWithCommand("get-state")
 }
 
-func (device AdbDevice) Shell(cmd string, stream bool, timeOut time.Duration) interface{} {
-	ret := device.Client.Shell(device.Serial, cmd, stream, timeOut)
+// TODO chage adbStreamConnection 2 AdbConnection
+func (device AdbDevice) openTransport(command string, timeout time.Duration) *adbStreamConnection {
+	return &adbStreamConnection{}
+}
+
+func (device AdbDevice) Shell(command string, stream bool, timeout time.Duration) interface{} {
+	c := device.openTransport(command, timeout)
 	if stream {
-		return ret
+		c = device.Client.connect(0)
+	} else {
+		c = device.Client.connect(timeout)
 	}
-	return ret
+	c.SendCommand("host:transport:" + command)
+	c.CheckOkay()
+	c.SendCommand("shell:" + command)
+	c.CheckOkay()
+	if stream {
+		return c
+	} else {
+		return c.ReadUntilClose()
+	}
 }
 
 func (device AdbDevice) ShellOutPut(cmd string) string {

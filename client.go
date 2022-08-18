@@ -265,23 +265,14 @@ func (adb *adbClient) Disconnect(addr string, raiseErr bool) string {
 	return c.ReadStringBlock()
 }
 
-func (adb *adbClient) Shell(sn string, cmd string, stream bool, timeOut time.Duration) interface{} {
-	c := &adbStreamConnection{}
-	if stream {
+type SerialNTransportID struct {
+	Serial      string
+	TransportID int
+}
 
-		c = adb.connect(0)
-	} else {
-		c = adb.connect(timeOut)
-	}
-	c.SendCommand("host:transport:" + sn)
-	c.CheckOkay()
-	c.SendCommand("shell:" + cmd)
-	c.CheckOkay()
-	if stream {
-		return c
-	} else {
-		return c.ReadUntilClose()
-	}
+func (adb *adbClient) Shell(serial string, command string, stream bool, timeout time.Duration) interface{} {
+	snNtid := SerialNTransportID{Serial: serial}
+	return adb.Device(snNtid).Shell(command, stream, timeout)
 }
 
 func (adb *adbClient) DeviceList() []AdbDevice {
@@ -303,11 +294,12 @@ func (adb *adbClient) DeviceList() []AdbDevice {
 	return res
 }
 
-func (adb *adbClient) Device(sn string) AdbDevice {
-	if sn == "" {
-		sn = os.Getenv("ANDROID_SERIAL")
+func (adb *adbClient) Device(snNtid SerialNTransportID) AdbDevice {
+	if snNtid.Serial != "" || snNtid.TransportID != 0 {
+		return AdbDevice{ShellMixin{Client: adb, Serial: snNtid.Serial, TransportID: snNtid.TransportID}}
 	}
-	if sn != "" {
+	serial := os.Getenv("ANDROID_SERIAL")
+	if serial != "" {
 		ds := adb.DeviceList()
 		if len(ds) == 0 {
 			log.Fatal("Error: Can't find any android device/emulator")
@@ -316,9 +308,8 @@ func (adb *adbClient) Device(sn string) AdbDevice {
 		} else {
 			return ds[0]
 		}
-
 	}
-	return AdbDevice{ShellMixin{Client: adb, Serial: sn}}
+	return AdbDevice{ShellMixin{Client: adb, Serial: snNtid.Serial, TransportID: snNtid.TransportID}}
 }
 
 func NewAdb(host string, port int, timeOut time.Duration) *adbClient {
