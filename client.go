@@ -297,7 +297,7 @@ func (adb *adbClient) DeviceList() []AdbDevice {
 			continue
 		}
 		if parts[1] == "device" {
-			res = append(res, AdbDevice{Client: adb, Serial: parts[0]})
+			res = append(res, AdbDevice{ShellMixin{Client: adb, Serial: parts[0]}})
 		}
 	}
 	return res
@@ -318,7 +318,7 @@ func (adb *adbClient) Device(sn string) AdbDevice {
 		}
 
 	}
-	return AdbDevice{Client: adb, Serial: sn}
+	return AdbDevice{ShellMixin{Client: adb, Serial: sn}}
 }
 
 func NewAdb(host string, port int, timeOut time.Duration) *adbClient {
