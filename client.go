@@ -35,10 +35,7 @@ const (
 
 func checkServer(host string, port int) bool {
 	_, err := net.Dial("tcp", fmt.Sprintf("%v:%v", host, port))
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }
 
 func substr(s string, pos, length int) string {
@@ -96,6 +93,23 @@ func (adbStream adbStreamConnection) safeConnect(timeOut time.Duration) (*net.Co
 		return nil, err
 	}
 	return conn, nil
+}
+
+func (adbStream adbStreamConnection) SetTimeout(timeOut time.Duration) error {
+	if timeOut != 0 {
+		var err error
+		err = adbStream.Conn.SetReadDeadline(time.Now().Add(time.Second * timeOut))
+		if err != nil {
+			panic(err.Error())
+			return err
+		}
+		err = adbStream.Conn.SetWriteDeadline(time.Now().Add(time.Second * timeOut))
+		if err != nil {
+			panic(err.Error())
+			return err
+		}
+	}
+	return nil
 }
 
 func (adbStream adbStreamConnection) createSocket(timeOut time.Duration) (*net.Conn, error) {
@@ -197,7 +211,7 @@ func (adbStream adbStreamConnection) CheckOkay() {
 // end region adbStreamConnection
 
 // region AdbClient
-type adbClient struct {
+type AdbClient struct {
 	Host       string
 	Port       int
 	SocketTime time.Duration
@@ -216,7 +230,7 @@ func AdbPath() string {
 	return abs
 }
 
-func (adb *adbClient) connect(timeout time.Duration) *adbStreamConnection {
+func (adb *AdbClient) connect(timeout time.Duration) *adbStreamConnection {
 	adbStream := &adbStreamConnection{
 		Host: adb.Host,
 		Port: adb.Port,
@@ -230,7 +244,7 @@ func (adb *adbClient) connect(timeout time.Duration) *adbStreamConnection {
 
 }
 
-func (adb *adbClient) ServerVersion() int {
+func (adb *AdbClient) ServerVersion() int {
 	c := adb.connect(10)
 	c.SendCommand("host:version")
 	c.CheckOkay()
@@ -239,7 +253,7 @@ func (adb *adbClient) ServerVersion() int {
 	return l + 16
 }
 
-func (adb *adbClient) ServerKill() {
+func (adb *AdbClient) ServerKill() {
 	if checkServer(adb.Host, adb.Port) {
 		c := adb.connect(10)
 		c.SendCommand("host:kill")
@@ -247,44 +261,35 @@ func (adb *adbClient) ServerKill() {
 	}
 }
 
-func (adb *adbClient) WaitFor() {
+func (adb *AdbClient) WaitFor() {
 	// pass
 }
 
-func (adb *adbClient) Connect(addr string, timeOut time.Duration) string {
+func (adb *AdbClient) Connect(addr string, timeOut time.Duration) string {
 	//addr (str): adb remote address [eg: 191.168.0.1:5555]
 	c := adb.connect(timeOut)
 	c.SendCommand("host:connect:" + addr)
 	return c.ReadStringBlock()
 }
 
-func (adb *adbClient) Disconnect(addr string, raiseErr bool) string {
+func (adb *AdbClient) Disconnect(addr string, raiseErr bool) string {
 	//addr (str): adb remote address [eg: 191.168.0.1:5555]
 	c := adb.connect(10)
 	c.SendCommand("host:disconnect:" + addr)
 	return c.ReadStringBlock()
 }
 
-func (adb *adbClient) Shell(sn string, cmd string, stream bool, timeOut time.Duration) interface{} {
-	c := &adbStreamConnection{}
-	if stream {
-
-		c = adb.connect(0)
-	} else {
-		c = adb.connect(timeOut)
-	}
-	c.SendCommand("host:transport:" + sn)
-	c.CheckOkay()
-	c.SendCommand("shell:" + cmd)
-	c.CheckOkay()
-	if stream {
-		return c
-	} else {
-		return c.ReadUntilClose()
-	}
+type SerialNTransportID struct {
+	Serial      string
+	TransportID int
 }
 
-func (adb *adbClient) DeviceList() []AdbDevice {
+func (adb *AdbClient) Shell(serial string, command string, stream bool, timeout time.Duration) interface{} {
+	snNtid := SerialNTransportID{Serial: serial}
+	return adb.Device(snNtid).Shell(command, stream, timeout)
+}
+
+func (adb *AdbClient) DeviceList() []AdbDevice {
 	res := []AdbDevice{}
 	c := adb.connect(10)
 	c.SendCommand("host:devices")
@@ -303,11 +308,12 @@ func (adb *adbClient) DeviceList() []AdbDevice {
 	return res
 }
 
-func (adb *adbClient) Device(sn string) AdbDevice {
-	if sn == "" {
-		sn = os.Getenv("ANDROID_SERIAL")
+func (adb *AdbClient) Device(snNtid SerialNTransportID) AdbDevice {
+	if snNtid.Serial != "" || snNtid.TransportID != 0 {
+		return AdbDevice{ShellMixin{Client: adb, Serial: snNtid.Serial, TransportID: snNtid.TransportID}}
 	}
-	if sn != "" {
+	serial := os.Getenv("ANDROID_SERIAL")
+	if serial != "" {
 		ds := adb.DeviceList()
 		if len(ds) == 0 {
 			log.Fatal("Error: Can't find any android device/emulator")
@@ -316,13 +322,12 @@ func (adb *adbClient) Device(sn string) AdbDevice {
 		} else {
 			return ds[0]
 		}
-
 	}
-	return AdbDevice{ShellMixin{Client: adb, Serial: sn}}
+	return AdbDevice{ShellMixin{Client: adb, Serial: snNtid.Serial, TransportID: snNtid.TransportID}}
 }
 
-func NewAdb(host string, port int, timeOut time.Duration) *adbClient {
-	adb := &adbClient{Host: host, Port: port, SocketTime: time.Second * timeOut}
+func NewAdb(host string, port int, timeOut time.Duration) *AdbClient {
+	adb := &AdbClient{Host: host, Port: port, SocketTime: time.Second * timeOut}
 	return adb
 }
 

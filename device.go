@@ -9,9 +9,10 @@ import (
 )
 
 type ShellMixin struct {
-	Client     *adbClient
-	Serial     string
-	properties map[string]string
+	Client      *AdbClient
+	Serial      string
+	TransportID int
+	properties  map[string]string
 }
 
 func (mixin ShellMixin) run(cmd string) interface{} {
@@ -181,12 +182,53 @@ func (device AdbDevice) GetState() string {
 	return device.getWithCommand("get-state")
 }
 
-func (device AdbDevice) Shell(cmd string, stream bool, timeOut time.Duration) interface{} {
-	ret := device.Client.Shell(device.Serial, cmd, stream, timeOut)
-	if stream {
-		return ret
+// TODO chage adbStreamConnection 2 AdbConnection
+func (device AdbDevice) openTransport(command string, timeout time.Duration) *adbStreamConnection {
+	c := device.Client.connect(timeout)
+	if timeout > 0 {
+		// 这里修改了一下 使用c设置Conn的timeout
+		c.SetTimeout(timeout)
 	}
-	return ret
+	if command != "" {
+		if device.TransportID > 0 {
+			c.SendCommand("host-transport-id:" + fmt.Sprintf("%d:%s", device.TransportID, command))
+			//  send_command(f"host-transport-id:{self._transport_id}:{command}")
+		} else if device.Serial != "" {
+			cmd := "host-serial:" + fmt.Sprintf("%s:%s", device.Serial, command)
+			c.SendCommand(cmd)
+			// c.send_command(f"host-serial:{self._serial}:{command}")
+		} else {
+			log.Fatal("RuntimeError")
+		}
+		c.CheckOkay()
+	} else {
+		if device.TransportID > 0 {
+			c.SendCommand("host:transport-id:" + fmt.Sprintf("%d", device.TransportID))
+			// c.send_command(f"host:transport-id:{self._transport_id}")
+		} else if device.Serial != "" {
+			// # host:tport:serial:xxx is also fine, but receive 12 bytes
+			// # recv: 4f 4b 41 59 14 00 00 00 00 00 00 00              OKAY........
+			// # so here use host:transport
+			c.SendCommand("host:transport:" + device.Serial)
+			// c.send_command(f"host:transport:{self._serial}")
+		} else {
+			log.Fatal("RuntimeError")
+		}
+		c.CheckOkay()
+	}
+	return c
+}
+
+func (device AdbDevice) Shell(cmdargs string, stream bool, timeout time.Duration) interface{} {
+	c := device.openTransport("", timeout)
+	c.SendCommand("shell:" + cmdargs)
+	c.CheckOkay()
+	if stream {
+		return c
+	}
+	output := c.ReadUntilClose()
+	// 简单返回
+	return output
 }
 
 func (device AdbDevice) ShellOutPut(cmd string) string {

@@ -68,3 +68,6 @@ server_logs/
 
 /vendor/
 config/.config.yml
+
+# IDE && Editor
+.vscode/
