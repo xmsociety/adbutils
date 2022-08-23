@@ -58,52 +58,66 @@ func getCurrentFile() string {
 	return getParentDirectory(file)
 }
 
-// adbStreamConnection region adbStreamConnection
+func GetFreePort() int {
+	conn, err := net.Listen("tcp", "127.0.0.1:0")
+	defer conn.Close()
+	if err != nil {
+		log.Fatal("getFreePort error! ", err.Error())
+		return 0
+	}
+	ipPort := strings.Split(conn.Addr().String(), ":")
+	port, _ := strconv.Atoi(ipPort[len(ipPort)-1])
+	return port
+}
 
-type adbStreamConnection struct {
+// AdbConnection region AdbConnection
+
+type AdbConnection struct {
 	Host string
 	Port int
 	Conn net.Conn
 }
 
-func (adbStream adbStreamConnection) safeConnect(timeOut time.Duration) (*net.Conn, error) {
-	conn, err := adbStream.createSocket(timeOut)
+func (adbConnection AdbConnection) safeConnect() (*net.Conn, error) {
+	conn, err := adbConnection.createSocket()
 	if err != nil {
 		switch reflect.TypeOf(err) {
 		case reflect.TypeOf(&net.OpError{}):
 			cmd := exec.Command(AdbPath(), "start-server")
 			err = cmd.Start()
 			if err != nil {
-				panic(err.Error())
+				log.Fatal("start adb error: ", err.Error())
 				return nil, err
 			}
 			err = cmd.Wait()
 			if err != nil {
-				panic(err.Error())
+				log.Fatal("start adb error: ", err.Error())
 				return nil, err
 			}
-			conn, err = adbStream.createSocket(timeOut)
+			conn, err = adbConnection.createSocket()
 			if err != nil {
-				log.Fatal("restart adb error!")
+				log.Fatal("restart adb error! ", err.Error())
+				return nil, err
 			}
 			return conn, nil
 		default:
-			panic(err.Error())
+			log.Fatal("unknown error! ", err.Error())
+			return nil, err
 		}
 		return nil, err
 	}
 	return conn, nil
 }
 
-func (adbStream adbStreamConnection) SetTimeout(timeOut time.Duration) error {
+func (adbConnection AdbConnection) SetTimeout(timeOut time.Duration) error {
 	if timeOut != 0 {
 		var err error
-		err = adbStream.Conn.SetReadDeadline(time.Now().Add(time.Second * timeOut))
+		err = adbConnection.Conn.SetReadDeadline(time.Now().Add(time.Second * timeOut))
 		if err != nil {
 			panic(err.Error())
 			return err
 		}
-		err = adbStream.Conn.SetWriteDeadline(time.Now().Add(time.Second * timeOut))
+		err = adbConnection.Conn.SetWriteDeadline(time.Now().Add(time.Second * timeOut))
 		if err != nil {
 			panic(err.Error())
 			return err
@@ -112,42 +126,31 @@ func (adbStream adbStreamConnection) SetTimeout(timeOut time.Duration) error {
 	return nil
 }
 
-func (adbStream adbStreamConnection) createSocket(timeOut time.Duration) (*net.Conn, error) {
-	conn, err := net.Dial("tcp", fmt.Sprintf("%v:%d", adbStream.Host, adbStream.Port))
+func (adbConnection AdbConnection) createSocket() (*net.Conn, error) {
+	conn, err := net.Dial("tcp", fmt.Sprintf("%v:%d", adbConnection.Host, adbConnection.Port))
 	if err != nil {
 		return nil, err
-	}
-	if timeOut != 0 {
-		var err error
-		err = conn.SetReadDeadline(time.Now().Add(time.Second * timeOut))
-		if err != nil {
-			panic(err.Error())
-		}
-		err = conn.SetWriteDeadline(time.Now().Add(time.Second * timeOut))
-		if err != nil {
-			panic(err.Error())
-		}
 	}
 	return &conn, nil
 }
 
-func (adbStream adbStreamConnection) Close() {
-	err := adbStream.Conn.Close()
+func (adbConnection AdbConnection) Close() {
+	err := adbConnection.Conn.Close()
 	if err != nil {
 		return
 	}
 }
 
-func (adbStream adbStreamConnection) Read(n int) []byte {
-	return adbStream.readFully(n)
+func (adbConnection AdbConnection) Read(n int) []byte {
+	return adbConnection.readFully(n)
 }
 
-func (adbStream adbStreamConnection) readFully(n int) []byte {
+func (adbConnection AdbConnection) readFully(n int) []byte {
 	t := 0
 	buffer := make([]byte, n)
 	result := bytes.NewBuffer(nil)
 	for t < n {
-		length, err := adbStream.Conn.Read(buffer[0:n])
+		length, err := adbConnection.Conn.Read(buffer[0:n])
 		if length == 0 {
 			break
 		}
@@ -162,33 +165,33 @@ func (adbStream adbStreamConnection) readFully(n int) []byte {
 	return result.Bytes()
 }
 
-func (adbStream adbStreamConnection) SendCommand(cmd string) {
+func (adbConnection AdbConnection) SendCommand(cmd string) {
 	msg := fmt.Sprintf("%04x%s", len(cmd), cmd)
-	_, err := adbStream.Conn.Write([]byte(msg))
+	_, err := adbConnection.Conn.Write([]byte(msg))
 	if err != nil {
-		log.Fatal("write error!")
+		log.Fatal("write error!", err.Error())
 		return
 	}
 }
 
-func (adbStream adbStreamConnection) ReadString(n int) string {
-	res := adbStream.Read(n)
+func (adbConnection AdbConnection) ReadString(n int) string {
+	res := adbConnection.Read(n)
 	return string(res)
 }
 
-func (adbStream adbStreamConnection) ReadStringBlock() string {
-	str := adbStream.ReadString(4)
+func (adbConnection AdbConnection) ReadStringBlock() string {
+	str := adbConnection.ReadString(4)
 	if len(str) == 0 {
-		log.Fatal("connection closed")
+		log.Fatal("receive data error connection closed")
 	}
 	size, _ := strconv.ParseUint(str, 16, 32)
-	return adbStream.ReadString(int(size))
+	return adbConnection.ReadString(int(size))
 }
 
-func (adbStream adbStreamConnection) ReadUntilClose() string {
+func (adbConnection AdbConnection) ReadUntilClose() string {
 	buf := []byte{}
 	for {
-		chunk := adbStream.Read(4096)
+		chunk := adbConnection.Read(4096)
 		if len(chunk) == 0 {
 			break
 		}
@@ -198,19 +201,19 @@ func (adbStream adbStreamConnection) ReadUntilClose() string {
 	return string(buf)
 }
 
-func (adbStream adbStreamConnection) CheckOkay() {
-	data := adbStream.ReadString(4)
+func (adbConnection AdbConnection) CheckOkay() {
+	data := adbConnection.ReadString(4)
 	if data == FAIL {
-		log.Fatal("connection closed")
+		log.Fatal(fmt.Sprintf("receive data: %v connection closed", data))
 	} else if data == OKAY {
 		return
 	}
 	log.Fatal(fmt.Sprintf("Unknown data: %v", data))
 }
 
-// end region adbStreamConnection
+// end region AdbConnection
 
-// region AdbClient
+// AdbClient region AdbClient
 type AdbClient struct {
 	Host       string
 	Port       int
@@ -230,22 +233,26 @@ func AdbPath() string {
 	return abs
 }
 
-func (adb *AdbClient) connect(timeout time.Duration) *adbStreamConnection {
-	adbStream := &adbStreamConnection{
+func (adb *AdbClient) connect() *AdbConnection {
+	adbConnection := &AdbConnection{
 		Host: adb.Host,
 		Port: adb.Port,
 	}
-	conn, err := adbStream.safeConnect(timeout)
+	conn, err := adbConnection.safeConnect()
 	if err != nil {
-		panic(err.Error())
+		log.Fatal("get connect error: ", err.Error())
 	}
-	adbStream.Conn = *conn
-	return adbStream
+	adbConnection.Conn = *conn
+	err = adbConnection.SetTimeout(adb.SocketTime)
+	if err != nil {
+		return nil
+	}
+	return adbConnection
 
 }
 
 func (adb *AdbClient) ServerVersion() int {
-	c := adb.connect(10)
+	c := adb.connect()
 	c.SendCommand("host:version")
 	c.CheckOkay()
 	res := c.ReadStringBlock()
@@ -255,7 +262,7 @@ func (adb *AdbClient) ServerVersion() int {
 
 func (adb *AdbClient) ServerKill() {
 	if checkServer(adb.Host, adb.Port) {
-		c := adb.connect(10)
+		c := adb.connect()
 		c.SendCommand("host:kill")
 		c.CheckOkay()
 	}
@@ -267,14 +274,14 @@ func (adb *AdbClient) WaitFor() {
 
 func (adb *AdbClient) Connect(addr string, timeOut time.Duration) string {
 	//addr (str): adb remote address [eg: 191.168.0.1:5555]
-	c := adb.connect(timeOut)
+	c := adb.connect()
 	c.SendCommand("host:connect:" + addr)
 	return c.ReadStringBlock()
 }
 
 func (adb *AdbClient) Disconnect(addr string, raiseErr bool) string {
 	//addr (str): adb remote address [eg: 191.168.0.1:5555]
-	c := adb.connect(10)
+	c := adb.connect()
 	c.SendCommand("host:disconnect:" + addr)
 	return c.ReadStringBlock()
 }
@@ -291,7 +298,7 @@ func (adb *AdbClient) Shell(serial string, command string, stream bool, timeout 
 
 func (adb *AdbClient) DeviceList() []AdbDevice {
 	res := []AdbDevice{}
-	c := adb.connect(10)
+	c := adb.connect()
 	c.SendCommand("host:devices")
 	c.CheckOkay()
 	outPut := c.ReadStringBlock()
