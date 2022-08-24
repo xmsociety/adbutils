@@ -2,6 +2,8 @@ package adbutils
 
 import "time"
 
+const Version = "0.0.2"
+
 type DeviceEvent struct {
 	Present bool
 	Serial  string
