@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	_ "github.com/xmsociety/adbutils/binaries"
 	"io"
 	"log"
 	"net"
@@ -112,12 +113,7 @@ func (adbConnection AdbConnection) safeConnect() (*net.Conn, error) {
 func (adbConnection AdbConnection) SetTimeout(timeOut time.Duration) error {
 	if timeOut != 0 {
 		var err error
-		err = adbConnection.Conn.SetReadDeadline(time.Now().Add(time.Second * timeOut))
-		if err != nil {
-			panic(err.Error())
-			return err
-		}
-		err = adbConnection.Conn.SetWriteDeadline(time.Now().Add(time.Second * timeOut))
+		err = adbConnection.Conn.SetDeadline(time.Now().Add(time.Second * timeOut))
 		if err != nil {
 			panic(err.Error())
 			return err
@@ -243,10 +239,6 @@ func (adb *AdbClient) connect() *AdbConnection {
 		log.Fatal("get connect error: ", err.Error())
 	}
 	adbConnection.Conn = *conn
-	err = adbConnection.SetTimeout(adb.SocketTime)
-	if err != nil {
-		return nil
-	}
 	return adbConnection
 
 }
