@@ -1,8 +1,8 @@
 package test
 
 import (
-	"adbutils"
 	"fmt"
+	"github.com/xmsociety/adbutils"
 	"testing"
 )
 

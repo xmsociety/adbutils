@@ -1,9 +1,9 @@
 package test
 
 import (
-	"adbutils"
 	"encoding/binary"
 	"fmt"
+	"github.com/xmsociety/adbutils"
 	"testing"
 )
 
