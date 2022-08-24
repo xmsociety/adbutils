@@ -19,6 +19,7 @@ func TestConnect(t *testing.T) {
 		Serial: "emulator-5554",
 	}
 	adb.Connect("emulator-5554")
-	fmt.Println(adb.Device(snNtid).AdbOut("push /Users/sato/Desktop/go-scrcpy-client/scrcpy/scrcpy-server.jar /data/local/tmp/scrcpy-server.jar"))
+	fmt.Println(adb.Device(snNtid).SayHello())
+	fmt.Println(adb.Device(snNtid).Push("/Users/sato/Desktop/go-scrcpy-client/scrcpy/scrcpy-server.jar", "/data/local/tmp/scrcpy-server.jar"))
 
 }

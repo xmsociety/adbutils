@@ -28,7 +28,7 @@ func (mixin ShellMixin) run(cmd string) interface{} {
 
 func (mixin ShellMixin) SayHello() string {
 	content := "hello from " + mixin.Serial
-	res := mixin.run("echo" + content)
+	res := mixin.run("echo " + content)
 	return res.(string)
 }
 

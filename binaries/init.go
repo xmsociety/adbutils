@@ -1,0 +1,3 @@
+package binaries
+
+func Init() {}
