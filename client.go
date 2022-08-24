@@ -272,7 +272,7 @@ func (adb *AdbClient) WaitFor() {
 	// pass
 }
 
-func (adb *AdbClient) Connect(addr string, timeOut time.Duration) string {
+func (adb *AdbClient) Connect(addr string) string {
 	//addr (str): adb remote address [eg: 191.168.0.1:5555]
 	c := adb.connect()
 	c.SendCommand("host:connect:" + addr)
@@ -291,9 +291,9 @@ type SerialNTransportID struct {
 	TransportID int
 }
 
-func (adb *AdbClient) Shell(serial string, command string, stream bool, timeout time.Duration) interface{} {
+func (adb *AdbClient) Shell(serial string, command string, stream bool) interface{} {
 	snNtid := SerialNTransportID{Serial: serial}
-	return adb.Device(snNtid).Shell(command, stream, timeout)
+	return adb.Device(snNtid).Shell(command, stream)
 }
 
 func (adb *AdbClient) DeviceList() []AdbDevice {
