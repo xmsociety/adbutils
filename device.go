@@ -371,10 +371,10 @@ func (adbDevice AdbDevice) CreateConnection(netWork, address string) net.Conn {
 	c.CheckOkay()
 	switch netWork {
 	case TCP:
-		c.SendCommand("tcp" + address)
+		c.SendCommand("tcp:" + address)
 		c.CheckOkay()
 	case UNIX, LOCALABSTRACT:
-		c.SendCommand("localabstract" + address)
+		c.SendCommand("localabstract:" + address)
 		c.CheckOkay()
 	case LOCALFILESYSTEM, LOCAL, DEV, LOCALRESERVED:
 		c.SendCommand(netWork + ":" + address)
