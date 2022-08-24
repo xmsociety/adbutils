@@ -1,11 +1,14 @@
 package adbutils
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"syscall"
@@ -20,7 +23,7 @@ type ShellMixin struct {
 }
 
 func (mixin ShellMixin) run(cmd string) interface{} {
-	return mixin.Client.Shell(mixin.Serial, cmd, false, 10)
+	return mixin.Client.Shell(mixin.Serial, cmd, false)
 }
 
 func (mixin ShellMixin) SayHello() string {
@@ -171,12 +174,51 @@ func (mixin ShellMixin) Remove(path string) {
 	mixin.run("rm " + path)
 }
 
+func (mixin ShellMixin) openTransport(command string) *AdbConnection {
+	c := mixin.Client.connect()
+	if mixin.Client.SocketTime > 0 {
+		// 这里修改了一下 使用c设置Conn的timeout
+		err := c.SetTimeout(mixin.Client.SocketTime)
+		if err != nil {
+			return nil
+		}
+	}
+	if command != "" {
+		if mixin.TransportID > 0 {
+			c.SendCommand("host-transport-id:" + fmt.Sprintf("%d:%s", mixin.TransportID, command))
+			//  send_command(f"host-transport-id:{self._transport_id}:{command}")
+		} else if mixin.Serial != "" {
+			cmd := "host-serial:" + fmt.Sprintf("%s:%s", mixin.Serial, command)
+			c.SendCommand(cmd)
+			// c.send_command(f"host-serial:{self._serial}:{command}")
+		} else {
+			log.Fatal("RuntimeError")
+		}
+		c.CheckOkay()
+	} else {
+		if mixin.TransportID > 0 {
+			c.SendCommand("host:transport-id:" + fmt.Sprintf("%d", mixin.TransportID))
+			// c.send_command(f"host:transport-id:{self._transport_id}")
+		} else if mixin.Serial != "" {
+			// # host:tport:serial:xxx is also fine, but receive 12 bytes
+			// # recv: 4f 4b 41 59 14 00 00 00 00 00 00 00              OKAY........
+			// # so here use host:transport
+			c.SendCommand("host:transport:" + mixin.Serial)
+			// c.send_command(f"host:transport:{self._serial}")
+		} else {
+			log.Fatal("RuntimeError")
+		}
+		c.CheckOkay()
+	}
+	return c
+}
+
 type AdbDevice struct {
 	ShellMixin
 }
 
 func (adbDevice AdbDevice) getWithCommand(cmd string) string {
-	c := adbDevice.Client.connect()
+	c := adbDevice.openTransport("")
 	c.SendCommand(strings.Join([]string{"host-serial", adbDevice.Serial, cmd}, ":"))
 	c.CheckOkay()
 	return c.ReadStringBlock()
@@ -191,11 +233,11 @@ func (adbDevice AdbDevice) GetSerialNo() string {
 }
 
 func (adbDevice AdbDevice) GetDevPath() string {
-	return adbDevice.getWithCommand("get_devpath")
+	return adbDevice.getWithCommand("get-devpath")
 }
 
 func (adbDevice AdbDevice) GetFeatures() string {
-	return adbDevice.getWithCommand("get_features")
+	return adbDevice.getWithCommand("features")
 }
 
 func (adbDevice AdbDevice) Info() map[string]string {
@@ -214,47 +256,47 @@ func (adbDevice AdbDevice) Sync() Sync {
 	return Sync{AdbClient: adbDevice.Client, Serial: adbDevice.Serial}
 }
 
-func (adbDevice AdbDevice) openTransport(command string, timeout time.Duration) *AdbConnection {
-	c := adbDevice.Client.connect()
-	if timeout > 0 {
-		// 这里修改了一下 使用c设置Conn的timeout
-		err := c.SetTimeout(timeout)
-		if err != nil {
-			return nil
-		}
+func (adbDevice AdbDevice) AdbOut(command string) string {
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	commandWithPrefix := "-s " + adbDevice.Serial + " " + command
+	cmd := exec.CommandContext(ctx, AdbPath(), strings.Split(commandWithPrefix, " ")...)
+	stdErr, err := cmd.StderrPipe()
+	stdOut, err := cmd.StdoutPipe()
+
+	defer func() {
+		cancelFunc()
+		_ = stdErr.Close()
+		_ = stdOut.Close()
+		_ = cmd.Wait()
+	}()
+	if err != nil {
+		log.Fatal(err.Error())
+		return ""
 	}
-	if command != "" {
-		if adbDevice.TransportID > 0 {
-			c.SendCommand("host-transport-id:" + fmt.Sprintf("%d:%s", adbDevice.TransportID, command))
-			//  send_command(f"host-transport-id:{self._transport_id}:{command}")
-		} else if adbDevice.Serial != "" {
-			cmd := "host-serial:" + fmt.Sprintf("%s:%s", adbDevice.Serial, command)
-			c.SendCommand(cmd)
-			// c.send_command(f"host-serial:{self._serial}:{command}")
-		} else {
-			log.Fatal("RuntimeError")
-		}
-		c.CheckOkay()
-	} else {
-		if adbDevice.TransportID > 0 {
-			c.SendCommand("host:transport-id:" + fmt.Sprintf("%d", adbDevice.TransportID))
-			// c.send_command(f"host:transport-id:{self._transport_id}")
-		} else if adbDevice.Serial != "" {
-			// # host:tport:serial:xxx is also fine, but receive 12 bytes
-			// # recv: 4f 4b 41 59 14 00 00 00 00 00 00 00              OKAY........
-			// # so here use host:transport
-			c.SendCommand("host:transport:" + adbDevice.Serial)
-			// c.send_command(f"host:transport:{self._serial}")
-		} else {
-			log.Fatal("RuntimeError")
-		}
-		c.CheckOkay()
+	err = cmd.Start()
+
+	if err != nil {
+		log.Fatal(err.Error())
+		return ""
 	}
-	return c
+	bytesOut, err := ioutil.ReadAll(stdOut)
+	if err != nil {
+		log.Fatal(err.Error())
+		return ""
+	}
+	bytesErr, err := ioutil.ReadAll(stdErr)
+	if err != nil {
+		log.Fatal(err.Error())
+		return ""
+	}
+	if len(bytesErr) != 0 {
+		log.Println(string(bytesErr))
+	}
+	return strings.TrimSpace(string(bytesOut))
 }
 
-func (adbDevice AdbDevice) Shell(cmdargs string, stream bool, timeout time.Duration) interface{} {
-	c := adbDevice.openTransport("", timeout)
+func (adbDevice AdbDevice) Shell(cmdargs string, stream bool) interface{} {
+	c := adbDevice.openTransport("")
 	c.SendCommand("shell:" + cmdargs)
 	c.CheckOkay()
 	if stream {
@@ -266,7 +308,7 @@ func (adbDevice AdbDevice) Shell(cmdargs string, stream bool, timeout time.Durat
 }
 
 func (adbDevice AdbDevice) ShellOutPut(cmd string) string {
-	res := adbDevice.Client.Shell(adbDevice.Serial, cmd, false, 0)
+	res := adbDevice.Client.Shell(adbDevice.Serial, cmd, false)
 	return res.(string)
 }
 
@@ -276,7 +318,7 @@ func (adbDevice AdbDevice) ForWard(local, remote string, noRebind bool) *AdbConn
 		args = append(args, "norebind")
 	}
 	args = append(args, []string{local, ";", remote}...)
-	return adbDevice.openTransport(strings.Join(args, ":"), 0)
+	return adbDevice.openTransport(strings.Join(args, ":"))
 }
 
 func (adbDevice AdbDevice) ForWardPort(remote interface{}) int {
@@ -301,7 +343,7 @@ func (adbDevice AdbDevice) ForWardPort(remote interface{}) int {
 }
 
 func (adbDevice AdbDevice) ForwardList() []ForwardItem {
-	c := adbDevice.openTransport("list-forward", 0)
+	c := adbDevice.openTransport("list-forward")
 	content := c.ReadStringBlock()
 	forwardItems := []ForwardItem{}
 	for _, line := range strings.Split(content, "\n") {
@@ -319,12 +361,12 @@ func (adbDevice AdbDevice) ForwardList() []ForwardItem {
 	return forwardItems
 }
 
-func (adbDevice AdbDevice) Push(local, remote string) {
-	// pass
+func (adbDevice AdbDevice) Push(local, remote string) string {
+	return adbDevice.AdbOut(fmt.Sprintf("push %v %v", local, remote))
 }
 
 func (adbDevice AdbDevice) CreateConnection(netWork, address string) net.Conn {
-	c := adbDevice.Client.connect()
+	c := adbDevice.openTransport("")
 	c.SendCommand("host:transport:" + adbDevice.Serial)
 	c.CheckOkay()
 	switch netWork {
@@ -350,9 +392,7 @@ type Sync struct {
 }
 
 func (sync Sync) prepareSync(path, cmd string) (*AdbConnection, error) {
-	c := sync.connect()
-	c.SendCommand(strings.Join([]string{"host", "transport", sync.Serial}, ":"))
-	c.CheckOkay()
+	c := sync.AdbClient.Device(SerialNTransportID{Serial: sync.Serial}).openTransport("")
 	c.SendCommand("sync:")
 	c.CheckOkay()
 	//pathLength := len([]byte(path))

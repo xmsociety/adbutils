@@ -16,9 +16,9 @@ func TestServerVersion(t *testing.T) {
 func TestConnect(t *testing.T) {
 	// adb := adbutils.NewAdb("localhost", 5037, 10)
 	snNtid := adbutils.SerialNTransportID{
-		Serial: "127.0.0.1:5555",
+		Serial: "emulator-5554",
 	}
-	// fmt.Println(adb.Device(snNtid).CurrentApp())
-	fmt.Println(adb.Device(snNtid).Shell("ls", false, 10))
-	//fmt.Println(adbutils.AdbPath(), runtime.GOARCH)
+	adb.Connect("emulator-5554")
+	fmt.Println(adb.Device(snNtid).AdbOut("push /Users/sato/Desktop/go-scrcpy-client/scrcpy/scrcpy-server.jar /data/local/tmp/scrcpy-server.jar"))
+
 }
