@@ -1,10 +1,14 @@
 package adbutils
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -171,30 +175,60 @@ type AdbDevice struct {
 	ShellMixin
 }
 
-func (device AdbDevice) getWithCommand(cmd string) string {
-	c := device.Client.connect(10)
-	c.SendCommand(strings.Join([]string{"host-serial", device.Serial, cmd}, ":"))
+func (adbDevice AdbDevice) getWithCommand(cmd string) string {
+	c := adbDevice.Client.connect()
+	c.SendCommand(strings.Join([]string{"host-serial", adbDevice.Serial, cmd}, ":"))
 	c.CheckOkay()
 	return c.ReadStringBlock()
 }
 
-func (device AdbDevice) GetState() string {
-	return device.getWithCommand("get-state")
+func (adbDevice AdbDevice) GetState() string {
+	return adbDevice.getWithCommand("get-state")
 }
 
-// TODO chage adbStreamConnection 2 AdbConnection
-func (device AdbDevice) openTransport(command string, timeout time.Duration) *adbStreamConnection {
-	c := device.Client.connect(timeout)
+func (adbDevice AdbDevice) GetSerialNo() string {
+	return adbDevice.getWithCommand("get-serialno")
+}
+
+func (adbDevice AdbDevice) GetDevPath() string {
+	return adbDevice.getWithCommand("get_devpath")
+}
+
+func (adbDevice AdbDevice) GetFeatures() string {
+	return adbDevice.getWithCommand("get_features")
+}
+
+func (adbDevice AdbDevice) Info() map[string]string {
+	res := map[string]string{}
+	res["serialno"] = adbDevice.GetSerialNo()
+	res["devpath"] = adbDevice.GetDevPath()
+	res["state"] = adbDevice.GetState()
+	return res
+}
+
+func (adbDevice AdbDevice) String() {
+	fmt.Printf("AdbDevice(serial=%s)\n", adbDevice.Serial)
+}
+
+func (adbDevice AdbDevice) Sync() Sync {
+	return Sync{AdbClient: adbDevice.Client, Serial: adbDevice.Serial}
+}
+
+func (adbDevice AdbDevice) openTransport(command string, timeout time.Duration) *AdbConnection {
+	c := adbDevice.Client.connect()
 	if timeout > 0 {
 		// 这里修改了一下 使用c设置Conn的timeout
-		c.SetTimeout(timeout)
+		err := c.SetTimeout(timeout)
+		if err != nil {
+			return nil
+		}
 	}
 	if command != "" {
-		if device.TransportID > 0 {
-			c.SendCommand("host-transport-id:" + fmt.Sprintf("%d:%s", device.TransportID, command))
+		if adbDevice.TransportID > 0 {
+			c.SendCommand("host-transport-id:" + fmt.Sprintf("%d:%s", adbDevice.TransportID, command))
 			//  send_command(f"host-transport-id:{self._transport_id}:{command}")
-		} else if device.Serial != "" {
-			cmd := "host-serial:" + fmt.Sprintf("%s:%s", device.Serial, command)
+		} else if adbDevice.Serial != "" {
+			cmd := "host-serial:" + fmt.Sprintf("%s:%s", adbDevice.Serial, command)
 			c.SendCommand(cmd)
 			// c.send_command(f"host-serial:{self._serial}:{command}")
 		} else {
@@ -202,14 +236,14 @@ func (device AdbDevice) openTransport(command string, timeout time.Duration) *ad
 		}
 		c.CheckOkay()
 	} else {
-		if device.TransportID > 0 {
-			c.SendCommand("host:transport-id:" + fmt.Sprintf("%d", device.TransportID))
+		if adbDevice.TransportID > 0 {
+			c.SendCommand("host:transport-id:" + fmt.Sprintf("%d", adbDevice.TransportID))
 			// c.send_command(f"host:transport-id:{self._transport_id}")
-		} else if device.Serial != "" {
+		} else if adbDevice.Serial != "" {
 			// # host:tport:serial:xxx is also fine, but receive 12 bytes
 			// # recv: 4f 4b 41 59 14 00 00 00 00 00 00 00              OKAY........
 			// # so here use host:transport
-			c.SendCommand("host:transport:" + device.Serial)
+			c.SendCommand("host:transport:" + adbDevice.Serial)
 			// c.send_command(f"host:transport:{self._serial}")
 		} else {
 			log.Fatal("RuntimeError")
@@ -219,8 +253,8 @@ func (device AdbDevice) openTransport(command string, timeout time.Duration) *ad
 	return c
 }
 
-func (device AdbDevice) Shell(cmdargs string, stream bool, timeout time.Duration) interface{} {
-	c := device.openTransport("", timeout)
+func (adbDevice AdbDevice) Shell(cmdargs string, stream bool, timeout time.Duration) interface{} {
+	c := adbDevice.openTransport("", timeout)
 	c.SendCommand("shell:" + cmdargs)
 	c.CheckOkay()
 	if stream {
@@ -231,18 +265,67 @@ func (device AdbDevice) Shell(cmdargs string, stream bool, timeout time.Duration
 	return output
 }
 
-func (device AdbDevice) ShellOutPut(cmd string) string {
-	res := device.Client.Shell(device.Serial, cmd, false, 0)
+func (adbDevice AdbDevice) ShellOutPut(cmd string) string {
+	res := adbDevice.Client.Shell(adbDevice.Serial, cmd, false, 0)
 	return res.(string)
 }
 
-func (device AdbDevice) Push(local, remote string) {
+func (adbDevice AdbDevice) ForWard(local, remote string, noRebind bool) *AdbConnection {
+	args := []string{"forward"}
+	if noRebind {
+		args = append(args, "norebind")
+	}
+	args = append(args, []string{local, ";", remote}...)
+	return adbDevice.openTransport(strings.Join(args, ":"), 0)
+}
+
+func (adbDevice AdbDevice) ForWardPort(remote interface{}) int {
+	tmpRemote := ""
+	switch remote.(type) {
+	case int:
+		tmpRemote = "tcp:" + remote.(string)
+	default:
+		for _, f := range adbDevice.ForwardList() {
+			if f.Serial == adbDevice.Serial && f.Remote == tmpRemote && strings.HasPrefix(f.Local, "tcp") {
+				port, err := strconv.Atoi(f.Local[:2])
+				if err != nil {
+					return 0
+				}
+				return port
+			}
+		}
+	}
+	localPort := GetFreePort()
+	adbDevice.ForWard(fmt.Sprintf("tcp:%d", localPort), tmpRemote, false)
+	return localPort
+}
+
+func (adbDevice AdbDevice) ForwardList() []ForwardItem {
+	c := adbDevice.openTransport("list-forward", 0)
+	content := c.ReadStringBlock()
+	forwardItems := []ForwardItem{}
+	for _, line := range strings.Split(content, "\n") {
+		parts := strings.TrimSpace(line)
+		if len(parts) != 3 {
+			continue
+		} else {
+			forwardItems = append(forwardItems, ForwardItem{
+				Serial: string(parts[0]),
+				Local:  string(parts[1]),
+				Remote: string(parts[2]),
+			})
+		}
+	}
+	return forwardItems
+}
+
+func (adbDevice AdbDevice) Push(local, remote string) {
 	// pass
 }
 
-func (device AdbDevice) CreateConnection(netWork, address string) net.Conn {
-	c := device.Client.connect(10)
-	c.SendCommand("host:transport:" + device.Serial)
+func (adbDevice AdbDevice) CreateConnection(netWork, address string) net.Conn {
+	c := adbDevice.Client.connect()
+	c.SendCommand("host:transport:" + adbDevice.Serial)
 	c.CheckOkay()
 	switch netWork {
 	case TCP:
@@ -258,4 +341,188 @@ func (device AdbDevice) CreateConnection(netWork, address string) net.Conn {
 		panic("not support net work: " + netWork)
 	}
 	return c.Conn
+}
+
+// Sync region ync
+type Sync struct {
+	*AdbClient
+	Serial string
+}
+
+func (sync Sync) prepareSync(path, cmd string) (*AdbConnection, error) {
+	c := sync.connect()
+	c.SendCommand(strings.Join([]string{"host", "transport", sync.Serial}, ":"))
+	c.CheckOkay()
+	c.SendCommand("sync:")
+	c.CheckOkay()
+	//pathLength := len([]byte(path))
+	bs := make([]byte, 4)
+	binary.LittleEndian.PutUint32(bs, uint32(5)) // python struct.pack("<I",  小端序 int 4byte
+	cmdByte := []byte(cmd)
+	msg := append(cmdByte, bs...)
+	msg = append(msg, []byte(path)...)
+	_, err := c.Conn.Write(msg)
+	if err != nil {
+		log.Fatal("prepareSync write error: ", err.Error())
+		return nil, err
+	}
+	return c, nil
+}
+
+func (sync Sync) Exist(path string) bool {
+	return sync.Stat(path).Mtime != nil
+}
+
+func (sync Sync) Stat(path string) FileInfo {
+	c, err := sync.prepareSync(path, "STAT")
+	if c.ReadString(4) != "STAT" || err != nil {
+		log.Fatal("Stat sync error!")
+	}
+	fileInfo := FileInfo{Path: path}
+	res := []uint32{}
+	for i := 0; i < 3; i++ {
+		res = append(res, binary.LittleEndian.Uint32(c.Read(4)))
+	}
+	fileInfo.Mode = int(res[0])
+	fileInfo.Size = int(res[1])
+	if res[2] != 0 {
+		mtime := time.Unix(int64(res[2]), 0)
+		fileInfo.Mtime = &mtime
+	}
+	return fileInfo
+}
+
+func (sync Sync) IterDirectory(path string) []FileInfo {
+	c, err := sync.prepareSync(path, "LIST")
+	if err != nil {
+		log.Fatal("get file list error ", err.Error())
+	}
+	fileInfos := []FileInfo{}
+	for {
+		response := c.ReadString(4)
+		if response == DONE {
+			break
+		}
+		fileInfo := FileInfo{}
+		res := []uint32{}
+		for i := 0; i < 4; i++ {
+			res = append(res, binary.LittleEndian.Uint32(c.Read(4)))
+		}
+		name := c.ReadString(int(res[3]))
+		fileInfo.Mode = int(res[0])
+		fileInfo.Size = int(res[1])
+		fileInfo.Path = name
+		if res[2] != 0 {
+			mtime := time.Unix(int64(res[2]), 0)
+			fileInfo.Mtime = &mtime
+		}
+		fileInfos = append(fileInfos, fileInfo)
+	}
+	return fileInfos
+}
+
+func (sync Sync) List(path string) []FileInfo {
+	return sync.IterDirectory(path)
+}
+
+func (sync Sync) Push(src, dst string, mode int, check bool) int {
+	//path := dst + "," + ""
+	path := dst + "," + strconv.Itoa(syscall.S_IFREG|mode)
+	c, err := sync.prepareSync(path, "SEND")
+	if err != nil {
+		log.Fatal("Sync Push err ! ", err.Error())
+	}
+	file, err := os.OpenFile(src, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		log.Fatal("when Push, read local file error! ", err.Error())
+	}
+	totalSize := 0
+	for {
+		chunk := make([]byte, 0)
+		_, err = file.Read(chunk)
+		if err != nil {
+			log.Fatal("when Push, read local file error! ", err.Error())
+		}
+		if len(chunk) == 0 {
+			msg := []byte("DONE")
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, uint32(time.Now().Unix()))
+			msg = append(msg, bs...)
+			_, err = c.Conn.Write(msg)
+			if err != nil {
+				log.Fatal("Sync Push send done error! ", err.Error())
+			}
+			break
+		}
+		msg := []byte("DONE")
+		bs := make([]byte, 4)
+		binary.LittleEndian.PutUint32(bs, uint32(len(chunk)))
+		msg = append(msg, bs...)
+		_, err = c.Conn.Write(msg)
+		if err != nil {
+			log.Fatal("when push write content error! ", err.Error())
+		}
+		_, err = c.Conn.Write(chunk)
+		if err != nil {
+			log.Fatal("when push write content error! ", err.Error())
+		}
+	}
+	if check {
+		fileSize := sync.Stat(dst).Size
+		if fileSize != totalSize {
+			log.Fatal(fmt.Sprintf("Push not complete, expect pushed %d, actually pushed %d", totalSize, fileSize))
+		}
+	}
+	return totalSize
+}
+
+func (sync Sync) IterContent(path string) []byte {
+	c, err := sync.prepareSync(path, "RECV")
+	if err != nil {
+		log.Fatal("IterContent error ", err.Error())
+	}
+	chunks := []byte{}
+	for {
+		cmd := c.ReadString(4)
+		switch cmd {
+		case FAIL:
+			strSize := binary.LittleEndian.Uint32(c.Read(4))
+			errMsg := c.ReadString(int(strSize))
+			log.Fatal(fmt.Sprintf("Get %s Error %s", errMsg, path))
+		case DATA:
+			chunkSize := binary.LittleEndian.Uint32(c.Read(4))
+			chunk := c.Read(int(chunkSize))
+			if len(chunk) != int(chunkSize) {
+				log.Fatal("read chunk missing")
+			}
+			chunks = append(chunks, chunk...)
+		case DONE:
+			break
+		default:
+			log.Fatal("Invalid sync cmd: ", cmd)
+		}
+	}
+	return chunks
+}
+
+func (sync Sync) ReadBytes(path string) []byte {
+	return sync.IterContent(path)
+}
+
+func (sync Sync) ReadText(path string) string {
+	return string(sync.ReadBytes(path))
+}
+
+func (sync Sync) Pull(src, dst string) int {
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		log.Fatal("Sync pull file error! ", err.Error())
+	}
+	bytes := sync.IterContent(src)
+	size, err := f.Write(bytes)
+	if err != nil {
+		log.Fatal("Sync pull file error, when write! ", err.Error())
+		return 0
+	}
+	return size
 }

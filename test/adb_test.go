@@ -1,8 +1,8 @@
 package test
 
 import (
-	"adbutils"
 	"fmt"
+	"github.com/xmsociety/adbutils"
 	"testing"
 )
 
@@ -16,7 +16,7 @@ func TestServerVersion(t *testing.T) {
 func TestConnect(t *testing.T) {
 	// adb := adbutils.NewAdb("localhost", 5037, 10)
 	snNtid := adbutils.SerialNTransportID{
-		Serial: "emulator-5558",
+		Serial: "127.0.0.1:5555",
 	}
 	// fmt.Println(adb.Device(snNtid).CurrentApp())
 	fmt.Println(adb.Device(snNtid).Shell("ls", false, 10))
