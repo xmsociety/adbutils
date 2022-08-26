@@ -2,8 +2,9 @@ package test
 
 import (
 	"fmt"
-	"github.com/xmsociety/adbutils"
 	"testing"
+
+	"github.com/xmsociety/adbutils"
 )
 
 var adb = adbutils.AdbClient{Host: "localhost", Port: 5037, SocketTime: 10}
@@ -15,11 +16,13 @@ func TestServerVersion(t *testing.T) {
 
 func TestConnect(t *testing.T) {
 	// adb := adbutils.NewAdb("localhost", 5037, 10)
-	snNtid := adbutils.SerialNTransportID{
-		Serial: "emulator-5554",
+	for _, i := range adb.DeviceList() {
+		adb.Connect(i.Serial)
+		snNtid := adbutils.SerialNTransportID{
+			Serial: i.Serial,
+		}
+		fmt.Println(adb.Device(snNtid).SayHello())
+		// fmt.Println(adb.Device(snNtid).Push("/Users/sato/Desktop/go-scrcpy-client/scrcpy/scrcpy-server.jar", "/data/local/tmp/scrcpy-server.jar"))
 	}
-	adb.Connect("emulator-5554")
-	fmt.Println(adb.Device(snNtid).SayHello())
-	fmt.Println(adb.Device(snNtid).Push("/Users/sato/Desktop/go-scrcpy-client/scrcpy/scrcpy-server.jar", "/data/local/tmp/scrcpy-server.jar"))
 
 }

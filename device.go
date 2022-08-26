@@ -19,7 +19,7 @@ type ShellMixin struct {
 	Client      *AdbClient
 	Serial      string
 	TransportID int
-	properties  map[string]string
+	Properties  map[string]string
 }
 
 func (mixin ShellMixin) run(cmd string) interface{} {
