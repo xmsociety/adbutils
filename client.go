@@ -63,7 +63,7 @@ func GetFreePort() int {
 	conn, err := net.Listen("tcp", "127.0.0.1:0")
 	defer conn.Close()
 	if err != nil {
-		log.Fatal("getFreePort error! ", err.Error())
+		log.Println("getFreePort error! ", err.Error())
 		return 0
 	}
 	ipPort := strings.Split(conn.Addr().String(), ":")
@@ -87,22 +87,22 @@ func (adbConnection AdbConnection) safeConnect() (*net.Conn, error) {
 			cmd := exec.Command(AdbPath(), "start-server")
 			err = cmd.Start()
 			if err != nil {
-				log.Fatal("start adb error: ", err.Error())
+				log.Println("start adb error: ", err.Error())
 				return nil, err
 			}
 			err = cmd.Wait()
 			if err != nil {
-				log.Fatal("start adb error: ", err.Error())
+				log.Println("start adb error: ", err.Error())
 				return nil, err
 			}
 			conn, err = adbConnection.createSocket()
 			if err != nil {
-				log.Fatal("restart adb error! ", err.Error())
+				log.Println("restart adb error! ", err.Error())
 				return nil, err
 			}
 			return conn, nil
 		default:
-			log.Fatal("unknown error! ", err.Error())
+			log.Println("unknown error! ", err.Error())
 			return nil, err
 		}
 		return nil, err
@@ -166,7 +166,7 @@ func (adbConnection AdbConnection) SendCommand(cmd string) {
 	msg := fmt.Sprintf("%04x%s", len(cmd), cmd)
 	_, err := adbConnection.Conn.Write([]byte(msg))
 	if err != nil {
-		log.Fatal("write error!", err.Error())
+		log.Println("write error!", err.Error())
 		return
 	}
 }
@@ -179,7 +179,7 @@ func (adbConnection AdbConnection) ReadString(n int) string {
 func (adbConnection AdbConnection) ReadStringBlock() string {
 	str := adbConnection.ReadString(4)
 	if len(str) == 0 {
-		log.Fatal("receive data error connection closed")
+		log.Println("receive data error connection closed")
 	}
 	size, _ := strconv.ParseUint(str, 16, 32)
 	return adbConnection.ReadString(int(size))
@@ -201,11 +201,11 @@ func (adbConnection AdbConnection) ReadUntilClose() string {
 func (adbConnection AdbConnection) CheckOkay() {
 	data := adbConnection.ReadString(4)
 	if data == FAIL {
-		log.Fatal(fmt.Sprintf("receive data: %v connection closed", data))
+		log.Println(fmt.Sprintf("receive data: %v connection closed", data))
 	} else if data == OKAY {
 		return
 	}
-	log.Fatal(fmt.Sprintf("Unknown data: %v", data))
+	log.Println(fmt.Sprintf("Unknown data: %v", data))
 }
 
 // end region AdbConnection
@@ -237,7 +237,7 @@ func (adb *AdbClient) connect() *AdbConnection {
 	}
 	conn, err := adbConnection.safeConnect()
 	if err != nil {
-		log.Fatal("get connect error: ", err.Error())
+		log.Println("get connect error: ", err.Error())
 	}
 	adbConnection.Conn = *conn
 	return adbConnection
@@ -316,9 +316,9 @@ func (adb *AdbClient) Device(snNtid SerialNTransportID) AdbDevice {
 	if serial != "" {
 		ds := adb.DeviceList()
 		if len(ds) == 0 {
-			log.Fatal("Error: Can't find any android device/emulator")
+			log.Println("Error: Can't find any android device/emulator")
 		} else if len(ds) > 1 {
-			log.Fatal("more than one device/emulator, please specify the serial number")
+			log.Println("more than one device/emulator, please specify the serial number")
 		} else {
 			return ds[0]
 		}
