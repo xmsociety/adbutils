@@ -96,7 +96,7 @@ func (mixin ShellMixin) InstallRemote(remotePath string, clean bool) {
 	res := mixin.run("pm install -r -t " + remotePath)
 	resInfo := res.(string)
 	if !strings.Contains(resInfo, "Success") {
-		log.Fatalln(resInfo)
+		log.Println(resInfo)
 	}
 	if clean {
 		mixin.run("rm " + remotePath)
@@ -192,7 +192,7 @@ func (mixin ShellMixin) openTransport(command string, timeOut time.Duration) *Ad
 			c.SendCommand(cmd)
 			// c.send_command(f"host-serial:{self._serial}:{command}")
 		} else {
-			log.Fatal("RuntimeError")
+			log.Println("RuntimeError")
 		}
 		c.CheckOkay()
 	} else {
@@ -206,7 +206,7 @@ func (mixin ShellMixin) openTransport(command string, timeOut time.Duration) *Ad
 			c.SendCommand("host:transport:" + mixin.Serial)
 			// c.send_command(f"host:transport:{self._serial}")
 		} else {
-			log.Fatal("RuntimeError")
+			log.Println("RuntimeError")
 		}
 		c.CheckOkay()
 	}
@@ -270,23 +270,23 @@ func (adbDevice AdbDevice) AdbOut(command string) string {
 		_ = cmd.Wait()
 	}()
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Println(err.Error())
 		return ""
 	}
 	err = cmd.Start()
 
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Println(err.Error())
 		return ""
 	}
 	bytesOut, err := ioutil.ReadAll(stdOut)
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Println(err.Error())
 		return ""
 	}
 	bytesErr, err := ioutil.ReadAll(stdErr)
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Println(err.Error())
 		return ""
 	}
 	if len(bytesErr) != 0 {
@@ -403,7 +403,7 @@ func (sync Sync) prepareSync(path, cmd string) (*AdbConnection, error) {
 	msg = append(msg, []byte(path)...)
 	_, err := c.Conn.Write(msg)
 	if err != nil {
-		log.Fatal("prepareSync write error: ", err.Error())
+		log.Println("prepareSync write error: ", err.Error())
 		return nil, err
 	}
 	return c, nil
@@ -416,7 +416,7 @@ func (sync Sync) Exist(path string) bool {
 func (sync Sync) Stat(path string) FileInfo {
 	c, err := sync.prepareSync(path, "STAT")
 	if c.ReadString(4) != "STAT" || err != nil {
-		log.Fatal("Stat sync error!")
+		log.Println("Stat sync error!")
 	}
 	fileInfo := FileInfo{Path: path}
 	res := []uint32{}
@@ -435,7 +435,7 @@ func (sync Sync) Stat(path string) FileInfo {
 func (sync Sync) IterDirectory(path string) []FileInfo {
 	c, err := sync.prepareSync(path, "LIST")
 	if err != nil {
-		log.Fatal("get file list error ", err.Error())
+		log.Println("get file list error ", err.Error())
 	}
 	fileInfos := []FileInfo{}
 	for {
@@ -470,18 +470,18 @@ func (sync Sync) Push(src, dst string, mode int, check bool) int {
 	path := dst + "," + strconv.Itoa(syscall.S_IFREG|mode)
 	c, err := sync.prepareSync(path, "SEND")
 	if err != nil {
-		log.Fatal("Sync Push err ! ", err.Error())
+		log.Println("Sync Push err ! ", err.Error())
 	}
 	file, err := os.OpenFile(src, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
-		log.Fatal("when Push, read local file error! ", err.Error())
+		log.Println("when Push, read local file error! ", err.Error())
 	}
 	totalSize := 0
 	for {
 		chunk := make([]byte, 0)
 		_, err = file.Read(chunk)
 		if err != nil {
-			log.Fatal("when Push, read local file error! ", err.Error())
+			log.Println("when Push, read local file error! ", err.Error())
 		}
 		if len(chunk) == 0 {
 			msg := []byte("DONE")
@@ -490,7 +490,7 @@ func (sync Sync) Push(src, dst string, mode int, check bool) int {
 			msg = append(msg, bs...)
 			_, err = c.Conn.Write(msg)
 			if err != nil {
-				log.Fatal("Sync Push send done error! ", err.Error())
+				log.Println("Sync Push send done error! ", err.Error())
 			}
 			break
 		}
@@ -500,17 +500,17 @@ func (sync Sync) Push(src, dst string, mode int, check bool) int {
 		msg = append(msg, bs...)
 		_, err = c.Conn.Write(msg)
 		if err != nil {
-			log.Fatal("when push write content error! ", err.Error())
+			log.Println("when push write content error! ", err.Error())
 		}
 		_, err = c.Conn.Write(chunk)
 		if err != nil {
-			log.Fatal("when push write content error! ", err.Error())
+			log.Println("when push write content error! ", err.Error())
 		}
 	}
 	if check {
 		fileSize := sync.Stat(dst).Size
 		if fileSize != totalSize {
-			log.Fatal(fmt.Sprintf("Push not complete, expect pushed %d, actually pushed %d", totalSize, fileSize))
+			log.Println(fmt.Sprintf("Push not complete, expect pushed %d, actually pushed %d", totalSize, fileSize))
 		}
 	}
 	return totalSize
@@ -519,7 +519,7 @@ func (sync Sync) Push(src, dst string, mode int, check bool) int {
 func (sync Sync) IterContent(path string) []byte {
 	c, err := sync.prepareSync(path, "RECV")
 	if err != nil {
-		log.Fatal("IterContent error ", err.Error())
+		log.Println("IterContent error ", err.Error())
 	}
 	chunks := []byte{}
 	for {
@@ -528,18 +528,18 @@ func (sync Sync) IterContent(path string) []byte {
 		case FAIL:
 			strSize := binary.LittleEndian.Uint32(c.Read(4))
 			errMsg := c.ReadString(int(strSize))
-			log.Fatal(fmt.Sprintf("Get %s Error %s", errMsg, path))
+			log.Println(fmt.Sprintf("Get %s Error %s", errMsg, path))
 		case DATA:
 			chunkSize := binary.LittleEndian.Uint32(c.Read(4))
 			chunk := c.Read(int(chunkSize))
 			if len(chunk) != int(chunkSize) {
-				log.Fatal("read chunk missing")
+				log.Println("read chunk missing")
 			}
 			chunks = append(chunks, chunk...)
 		case DONE:
 			break
 		default:
-			log.Fatal("Invalid sync cmd: ", cmd)
+			log.Println("Invalid sync cmd: ", cmd)
 		}
 	}
 	return chunks
@@ -556,12 +556,12 @@ func (sync Sync) ReadText(path string) string {
 func (sync Sync) Pull(src, dst string) int {
 	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
-		log.Fatal("Sync pull file error! ", err.Error())
+		log.Println("Sync pull file error! ", err.Error())
 	}
 	bytes := sync.IterContent(src)
 	size, err := f.Write(bytes)
 	if err != nil {
-		log.Fatal("Sync pull file error, when write! ", err.Error())
+		log.Println("Sync pull file error, when write! ", err.Error())
 		return 0
 	}
 	return size
