@@ -286,7 +286,7 @@ type SerialNTransportID struct {
 
 func (adb *AdbClient) Shell(serial string, command string, stream bool) interface{} {
 	snNtid := SerialNTransportID{Serial: serial}
-	return adb.Device(snNtid).Shell(command, stream)
+	return adb.Device(snNtid).Shell(command, stream, adb.SocketTime)
 }
 
 func (adb *AdbClient) DeviceList() []AdbDevice {
