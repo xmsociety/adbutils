@@ -313,7 +313,7 @@ func pathExists(path string) (bool, error) {
 func AdbPath() string {
 	// so ugly
 	currentPath := getCurrentFile()
-	platform := runtime.GOOS
+	platform := Windows
 	adbPath := ""
 	subPath := "mac"
 	url := macAdbURL
