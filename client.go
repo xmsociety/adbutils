@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path"
@@ -16,6 +17,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -35,6 +37,9 @@ const (
 	Windows         = "windows"
 	Mac             = "darwin"
 	Linux           = "linux"
+	macAdbURL       = "https://cdn.mongona.com/mac/adb"
+	linuxAdbURL     = "https://cdn.mongona.com/linux/adb"
+	WinAdbURL       = "https://cdn.mongona.com/win"
 )
 
 func checkServer(host string, port int) bool {
@@ -108,7 +113,6 @@ func (adbConnection AdbConnection) safeConnect() (*net.Conn, error) {
 			log.Println("unknown error! ", err.Error())
 			return nil, err
 		}
-		return nil, err
 	}
 	return conn, nil
 }
@@ -220,22 +224,142 @@ type AdbClient struct {
 	SocketTime time.Duration
 }
 
+func downloadFile(url string, localPath string, wg *sync.WaitGroup) error {
+	defer func() {
+		if wg != nil {
+			wg.Done()
+		}
+	}()
+	var (
+		buf     = make([]byte, 32*1024)
+		written int64
+	)
+	tmpFilePath := localPath + ".download"
+	client := new(http.Client)
+	resp, err := client.Get(url)
+	if err != nil {
+		return err
+	}
+	file, err := os.Create(tmpFilePath)
+	defer file.Close()
+	if err != nil {
+		return err
+	}
+	fileSize, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 32)
+	if err != nil {
+		log.Println(err.Error())
+	}
+	defer resp.Body.Close()
+	if resp.Body == nil {
+		return errors.New("body is null")
+	}
+	for {
+		nr, er := resp.Body.Read(buf)
+		if nr > 0 {
+			nw, ew := file.Write(buf[0:nr])
+			log.Println(fmt.Sprintf("Download %v Done:%dKb, Total:%dKb, Process:%.2f", url, written/1024, fileSize, float32(written)/float32(fileSize)))
+			if nw > 0 {
+				written += int64(nw)
+			}
+			if ew != nil {
+				err = ew
+				break
+			}
+			if nr != nw {
+				err = io.ErrShortWrite
+				break
+			}
+		}
+		if er != nil {
+			if er != io.EOF {
+				err = er
+			}
+			break
+		}
+	}
+	if err == nil {
+		err = os.Rename(tmpFilePath, localPath)
+	}
+	return err
+}
+
+func createDir(path string) bool {
+	_exist, _err := pathExists(path)
+	if _err != nil {
+		return true
+	}
+	if _exist {
+		return true
+	} else {
+		err := os.Mkdir(path, os.ModePerm)
+		if err != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func pathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 func AdbPath() string {
+	// so ugly
 	currentPath := getCurrentFile()
 	platform := runtime.GOOS
-	subPath := ""
-	if platform == Windows {
-		subPath = path.Join("win", "adb.exe")
-	} else if platform == Linux {
-		subPath = path.Join("linux", "adb.exe")
-	} else {
-		subPath = path.Join("mac", "adb")
+	adbPath := ""
+	subPath := "mac"
+	url := macAdbURL
+	if platform == Linux {
+		subPath = Linux
+		url = linuxAdbURL
+	} else if platform == Windows {
+		subPath = "win"
+		url = WinAdbURL
 	}
-	abs, err := filepath.Abs(path.Join(currentPath, "binaries", subPath))
+	dir, _ := filepath.Abs(path.Join(currentPath, "binaries", subPath))
+	exist, err := pathExists(dir)
 	if err != nil {
+		log.Println(err.Error())
 		return ""
 	}
-	return abs
+	if !exist {
+		createDir(dir)
+	}
+	adbPath, _ = filepath.Abs(path.Join(dir, "adb"))
+	if platform == Windows {
+		adbPath, _ = filepath.Abs(path.Join(dir, "adb.exe"))
+	}
+	exist, _ = pathExists(adbPath)
+	if !exist {
+		if platform == Windows {
+			AdbWinApiPath, _ := filepath.Abs(path.Join(dir, "AdbWinApi.dll"))
+			AdbWinUsbApiPath, _ := filepath.Abs(path.Join(dir, "AdbWinUsbApi.dll"))
+			wg := &sync.WaitGroup{}
+			wg.Add(3)
+			err = downloadFile(url+"/adb.exe", adbPath, wg)
+			err = downloadFile(url+"/AdbWinApi.dll", AdbWinApiPath, wg)
+			err = downloadFile(url+"/AdbWinApi.dll", AdbWinUsbApiPath, wg)
+			wg.Wait()
+			if err != nil {
+				log.Println("get adb error!", err.Error())
+			}
+		} else {
+			err = downloadFile(url, adbPath, nil)
+			if err != nil {
+				log.Println("get adb error!", err.Error())
+			}
+			_ = os.Chmod(adbPath, 0777)
+		}
+	}
+	return adbPath
 }
 
 func (adb *AdbClient) connect() *AdbConnection {
