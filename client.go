@@ -32,6 +32,9 @@ const (
 	LOCALRESERVED   = "localreserved"
 	LOCALFILESYSTEM = "localfilesystem"
 	LOCALABSTRACT   = "localabstract"
+	Windows         = "windows"
+	Mac             = "darwin"
+	Linux           = "linux"
 )
 
 func checkServer(host string, port int) bool {
@@ -219,11 +222,16 @@ type AdbClient struct {
 
 func AdbPath() string {
 	currentPath := getCurrentFile()
-	var adb = "adb"
-	if runtime.GOOS == "windows" {
-		adb = "adb.exe"
+	platform := runtime.GOOS
+	subPath := ""
+	if platform == Windows {
+		subPath = path.Join("win", "adb.exe")
+	} else if platform == Linux {
+		subPath = path.Join("linux", "adb.exe")
+	} else {
+		subPath = path.Join("mac", "adb")
 	}
-	abs, err := filepath.Abs(path.Join(currentPath, "binaries", adb))
+	abs, err := filepath.Abs(path.Join(currentPath, "binaries", subPath))
 	if err != nil {
 		return ""
 	}
