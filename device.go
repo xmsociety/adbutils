@@ -218,7 +218,7 @@ type AdbDevice struct {
 }
 
 func (adbDevice AdbDevice) getWithCommand(cmd string) string {
-	c := adbDevice.openTransport("", 10)
+	c := adbDevice.openTransport("", adbDevice.Client.SocketTime)
 	c.SendCommand(strings.Join([]string{"host-serial", adbDevice.Serial, cmd}, ":"))
 	c.CheckOkay()
 	return c.ReadStringBlock()
@@ -295,8 +295,8 @@ func (adbDevice AdbDevice) AdbOut(command string) string {
 	return strings.TrimSpace(string(bytesOut))
 }
 
-func (adbDevice AdbDevice) Shell(cmdargs string, stream bool) interface{} {
-	c := adbDevice.openTransport("", 10)
+func (adbDevice AdbDevice) Shell(cmdargs string, stream bool, timeOut time.Duration) interface{} {
+	c := adbDevice.openTransport("", timeOut)
 	c.SendCommand("shell:" + cmdargs)
 	c.CheckOkay()
 	if stream {
@@ -318,7 +318,7 @@ func (adbDevice AdbDevice) ForWard(local, remote string, noRebind bool) *AdbConn
 		args = append(args, "norebind")
 	}
 	args = append(args, []string{local, ";", remote}...)
-	return adbDevice.openTransport(strings.Join(args, ":"), 10)
+	return adbDevice.openTransport(strings.Join(args, ":"), adbDevice.Client.SocketTime)
 }
 
 func (adbDevice AdbDevice) ForWardPort(remote interface{}) int {
@@ -343,7 +343,7 @@ func (adbDevice AdbDevice) ForWardPort(remote interface{}) int {
 }
 
 func (adbDevice AdbDevice) ForwardList() []ForwardItem {
-	c := adbDevice.openTransport("list-forward", 10)
+	c := adbDevice.openTransport("list-forward", adbDevice.Client.SocketTime)
 	content := c.ReadStringBlock()
 	forwardItems := []ForwardItem{}
 	for _, line := range strings.Split(content, "\n") {
