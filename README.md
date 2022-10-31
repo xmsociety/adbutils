@@ -3,7 +3,7 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/xmsociety/adbutils)](https://goreportcard.com/report/github.com/xmsociety/adbutils)
 [![Sourcegraph](https://sourcegraph.com/github.com/xmsociety/adbutils/-/badge.svg)](https://sourcegraph.com/github.com/xmsociety/adbutils?badge)
 [![Release](https://img.shields.io/github/release/xmsociety/adbutils.svg?style=flat-square)](https://github.com/xmsociety/adbutils/releases)
-[![Goproxy.cn](https://goproxy.cn/stats/github.com/xmsociety/adbutils/badges/download-count.svg)]((https://goproxy.cn))
+[![Goproxy.cn](https://goproxy.cn/stats/github.com/xmsociety/adbutils/badges/download-count.svg)](https://goproxy.cn)
 
 Transfer from [python adbutils](https://github.com/openatx/adbutils)
 
