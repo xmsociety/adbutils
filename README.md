@@ -1,4 +1,7 @@
 # adbutils
+[![GoDoc](https://pkg.go.dev/badge/github.com/xmsociety/adbutils?status.svg)](https://pkg.go.dev/github.com/xmsociety/adbutils?tab=doc)
+[![Sourcegraph](https://sourcegraph.com/github.com/xmsociety/adbutils/-/badge.svg)](https://sourcegraph.com/github.com/xmsociety/adbutils?badge)
+[![Goproxy.cn](https://goproxy.cn/stats/github.com/xmsociety/adbutils/badges/download-count.svg)]((https://goproxy.cn))
 
 Transfer from [python adbutils](https://github.com/openatx/adbutils)
 
