@@ -346,7 +346,7 @@ func AdbPath() string {
 			wg.Add(3)
 			err = downloadFile(url+"/adb.exe", adbPath, wg)
 			err = downloadFile(url+"/AdbWinApi.dll", AdbWinApiPath, wg)
-			err = downloadFile(url+"/AdbWinApi.dll", AdbWinUsbApiPath, wg)
+			err = downloadFile(url+"/AdbWinUsbApi.dll", AdbWinUsbApiPath, wg)
 			wg.Wait()
 			if err != nil {
 				log.Println("get adb error!", err.Error())
